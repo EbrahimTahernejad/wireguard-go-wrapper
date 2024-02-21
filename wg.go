@@ -211,12 +211,6 @@ func (i *Instance) Run() error {
 	}
 	os.Args = argsNew
 
-	for _, arg := range os.Args[1:] {
-		if !validFlags[arg] {
-			return fmt.Errorf("invalid flag: %s", arg)
-		}
-	}
-
 	flags := newFlags()
 	flags.setup()
 
