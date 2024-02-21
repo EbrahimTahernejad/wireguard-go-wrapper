@@ -7,9 +7,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"os/signal"
-	"syscall"
-	"errors"
 
 	"github.com/bepass-org/wireguard-go/app"
 
@@ -117,88 +114,106 @@ func validateFlags(f *Flags) error {
 			validCountries = append(validCountries, code)
 		}
 
-		return fmt.Errorf("invalid country code: %s. Valid country codes: $s", f.Country, validCountries)
+		return fmt.Errorf("invalid country code: %s. valid country codes: %s", f.Country, validCountries)
 	}
 
 	return nil
 }
 
 func parseCommandLine(command string) ([]string, error) {
-    var args []string
-    state := "start"
-    current := ""
-    quote := "\""
-    escapeNext := true
-    for i := 0; i < len(command); i++ {
-        c := command[i]
+	var args []string
+	state := "start"
+	current := ""
+	quote := "\""
+	escapeNext := true
+	for i := 0; i < len(command); i++ {
+		c := command[i]
 
-        if state == "quotes" {
-            if string(c) != quote {
-                current += string(c)
-            } else {
-                args = append(args, current)
-                current = ""
-                state = "start"
-            }
-            continue
-        }
+		if state == "quotes" {
+			if string(c) != quote {
+				current += string(c)
+			} else {
+				args = append(args, current)
+				current = ""
+				state = "start"
+			}
+			continue
+		}
 
-        if (escapeNext) {
-            current += string(c)
-            escapeNext = false
-            continue
-        }
+		if escapeNext {
+			current += string(c)
+			escapeNext = false
+			continue
+		}
 
-        if (c == '\\') {
-            escapeNext = true
-            continue
-        }
+		if c == '\\' {
+			escapeNext = true
+			continue
+		}
 
-        if c == '"' || c == '\'' {
-            state = "quotes"
-            quote = string(c)
-            continue
-        }
+		if c == '"' || c == '\'' {
+			state = "quotes"
+			quote = string(c)
+			continue
+		}
 
-        if state == "arg" {
-            if c == ' ' || c == '\t' {
-                args = append(args, current)
-                current = ""
-                state = "start"
-            } else {
-                current += string(c)
-            }
-            continue
-        }
+		if state == "arg" {
+			if c == ' ' || c == '\t' {
+				args = append(args, current)
+				current = ""
+				state = "start"
+			} else {
+				current += string(c)
+			}
+			continue
+		}
 
-        if c != ' ' && c != '\t' {
-            state = "arg"
-            current += string(c)
-        }
-    }
+		if c != ' ' && c != '\t' {
+			state = "arg"
+			current += string(c)
+		}
+	}
 
-    if state == "quotes" {
-        return []string{}, errors.New(fmt.Sprintf("Unclosed quote in command line: %s", command))
-    }
+	if state == "quotes" {
+		return []string{}, fmt.Errorf("unclosed quote in command line: %s", command)
+	}
 
-    if current != "" {
-        args = append(args, current)
-    }
+	if current != "" {
+		args = append(args, current)
+	}
 
-    return args, nil
+	return args, nil
 }
 
-func Run(args string) {
+type Instance struct {
+	done chan bool
+	args string
+}
+
+func NewInstance(args string) *Instance {
+	i := Instance{
+		done: make(chan bool),
+		args: args,
+	}
+	return &i
+}
+
+func (i *Instance) Quit() {
+	i.done <- true
+}
+
+func (i *Instance) Run() error {
+	argsNew, err := parseCommandLine("run " + i.args)
+
 	// Check for unexpected flags
-	argsNew, err := parseCommandLine("run " + args)
 	if err != nil {
-		log.Fatalf("Parse error: %v", err)
+		return fmt.Errorf("parse error: %v", err)
 	}
 	os.Args = argsNew
 
 	for _, arg := range os.Args[1:] {
 		if !validFlags[arg] {
-			log.Fatalf("Invalid flag: %s", arg)
+			return fmt.Errorf("invalid flag: %s", arg)
 		}
 	}
 
@@ -206,20 +221,20 @@ func Run(args string) {
 	flags.setup()
 
 	if err := validateFlags(flags); err != nil {
-		log.Fatalf("Validatrion error: %v", err)
+		return fmt.Errorf("validatrion error: %v", err)
 	}
 
-	sigchan := make(chan os.Signal)
-	signal.Notify(sigchan, os.Interrupt, syscall.SIGTERM)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
-		err := app.RunWarp(flags.PsiphonEnabled, flags.Gool, flags.Scan, flags.Verbose, flags.Country, flags.BindAddress, flags.Endpoint, flags.License, ctx, flags.Rtt)
-		if err != nil {
-			log.Fatal(err)
-		}
+		<-i.done
+		cancel()
 	}()
 
-	<-sigchan
-	cancel()
+	err = app.RunWarp(flags.PsiphonEnabled, flags.Gool, flags.Scan, flags.Verbose, flags.Country, flags.BindAddress, flags.Endpoint, flags.License, ctx, flags.Rtt)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
