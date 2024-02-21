@@ -107,7 +107,7 @@ func validateFlags(f *Flags) error {
 		return fmt.Errorf("if Psiphon is enabled, country code must be provided")
 	}
 
-	if !validCountryCodes[f.Country] {
+	if f.PsiphonEnabled && !validCountryCodes[f.Country] {
 		validCountries := make([]string, 0, len(validCountryCodes))
 
 		for code, _ := range validCountryCodes {
