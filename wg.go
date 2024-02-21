@@ -99,9 +99,9 @@ func validateFlags(f *Flags) error {
 		return fmt.Errorf("invalid bindAddress format: %s", f.BindAddress)
 	}
 
-	if ip := net.ParseIP(f.Endpoint); ip == nil {
-		return fmt.Errorf("invalid warp clean IP: %s", f.Endpoint)
-	}
+	// if ip := net.ParseIP(f.Endpoint); ip == nil {
+	// 	return fmt.Errorf("invalid warp clean IP: %s", f.Endpoint)
+	// }
 
 	if f.PsiphonEnabled && f.Country == "" {
 		return fmt.Errorf("if Psiphon is enabled, country code must be provided")
